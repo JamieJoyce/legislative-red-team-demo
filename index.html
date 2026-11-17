@@ -61,7 +61,11 @@ main.desk{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) m
 .blk.new .t{color:var(--ok);background:color-mix(in srgb,var(--ok) 11%,transparent);border-radius:3px;padding:0 3px}
 mark.hl{background:color-mix(in srgb,var(--c) 17%,transparent);color:inherit;border-bottom:2px solid var(--c);border-radius:2px;padding:1px 0;cursor:pointer}
 mark.hl.sel{background:color-mix(in srgb,var(--c) 36%,transparent);outline:2px solid var(--c)}
-mark.hl.cand{border-bottom-style:dotted}
+mark.hl.cand{border-bottom-style:dotted;background:none}
+.cues{border-top:1px solid var(--soft-2)}
+.cuel{gap:14px}
+.cuel>li{border-left:2px dotted var(--rule);padding-left:12px;display:grid;gap:3px}
+.cuel>li>.cq{font:400 14.5px/1.5 var(--f-body);color:var(--fg)}
 .k-defect{--c:var(--defect)} .k-risk{--c:var(--risk)} .k-tradeoff{--c:var(--tradeoff)} .k-notice{--c:var(--notice)}
 ins{color:var(--ok);text-decoration:none;background:color-mix(in srgb,var(--ok) 13%,transparent);border-radius:2px}
 del{color:var(--defect);background:color-mix(in srgb,var(--defect) 10%,transparent)}
@@ -464,6 +468,7 @@ var STANDARD=["It points to exact words, or to a named absence. The highlight co
 STANDARD.push("A conflict of interest is stated directly and names the person. It reports the tie as the source states it and does not allege that anyone acted wrongly.");
 STANDARD.push("Plain language shows only findings that matter to a general reader: ones where the result for a person or the public can be stated without explaining how laws are drafted. Wrong cross-references, typing mistakes and other drafting mechanics appear in the professional view only.");
 STANDARD.push("A claim that the law supplies nothing is shown only after the law has been searched for what would fill the gap, with the search recorded. Where a law covers part of the ground, the finding says what it covers, how far it reaches and what is left.");
+STANDARD.push("A cue is not a finding. A phrase the library watches for, or a risk factor a source lists, is shown only as the words that matched and the question to ask about them. It carries no severity, no confidence and no statement about this measure, it is never counted with the findings, and its highlights in the text are off until a reader asks for them. A finding that cannot be supported is dropped, never softened into a cue.");
 STANDARD.push("No invented arguments. A reason for keeping or changing wording is shown only when someone has actually given that reason and a source records it.");
 STANDARD.push("Nothing generic. A sentence that would still be true about a different measure is rewritten with this measure\u2019s specifics or cut.");
 STANDARD.push("If the wording is of a kind a careful drafter might choose on purpose, the finding shows the case for keeping it and the case for closing it, and how different stakeholders would likely see it. The tool gives no verdict of its own.");
@@ -482,6 +487,7 @@ if(window.claude&&window.claude.use){window.claude.use("sample").then(function(s
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function el(id){return document.getElementById(id)}
 Object.keys(D.measures).forEach(function(k){M[k]=mk(D.measures[k].text,D.measures[k].analysis,D.measures[k].pla)});
+
 function cur(){if(S.view==="live")return S.live;return M[S.view]||null}
 function arr(x){return Array.isArray(x)?x:(x?[x]:[])}
 function gloss(html){Object.keys(GLOSS).forEach(function(k){var re=new RegExp("\\b("+k.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+")\\b","i");html=html.replace(re,function(m){return'<abbr title="'+esc(GLOSS[k])+'">'+m+"</abbr>"})});return html}
@@ -514,7 +520,7 @@ function newBlocks(w,indent){return String(w).split("\n").map(function(line){var
 function textHTML(m){
   var A=m.analysis,blocks=m.text.blocks,per={},hard=S.hard?buildHard(m):null;
   if(!hard){A.findings.forEach(function(f){arr(f.a).forEach(function(a){locate(blocks,a).forEach(function(r){(per[r.bi]=per[r.bi]||[]).push({s:r.s,e:r.e,f:f})})})});
-    (m.cands||[]).forEach(function(c){(per[c.bi]=per[c.bi]||[]).push({s:c.s,e:c.e,cand:c})})}
+    if(S.cues)cueSpans(m).forEach(function(c){(per[c.bi]=per[c.bi]||[]).push({s:c.s,e:c.e,cand:c})})}
   var h="";
   blocks.forEach(function(b,i){
     var t=b.text,inner="";
@@ -594,6 +600,32 @@ function filtersHTML(m){var fams={};m.analysis.findings.forEach(function(f){fams
   return'<div class="row"><select id="f-kind" aria-label="Filter by kind"><option value="">All kinds</option>'+Object.keys(KIND).map(function(k){return'<option value="'+k+'"'+(S.fKind===k?" selected":"")+">"+KIND[k]+"</option>"}).join("")+'</select><select id="f-fam" aria-label="Filter by category"><option value="">All categories</option>'+Object.keys(fams).map(function(k){return'<option value="'+k+'"'+(S.fFam===k?" selected":"")+">"+esc(FAM[k]||k)+"</option>"}).join("")+"</select></div>"}
 function confList(m,full){var rs=m.analysis.conflicts||[];
   return'<ul class="plist rl">'+rs.map(function(r){return"<li>"+'<b class="pp">'+esc(r.claim)+"</b>"+(full?"<p>"+esc(r.detail)+"</p>"+links(r.s)+(r.unverified?'<div class="small">From general knowledge, not checked against a source.</div>':""):"")+"</li>"}).join("")+"</ul>"}
+/* Cues whose words are not already inside a finding highlight. A phrase under a finding is
+   accounted for: showing it again as unreviewed would say the opposite of what the finding says. */
+function cueSpans(m){
+  var taken=[];m.analysis.findings.forEach(function(f){arr(f.a).forEach(function(a){locate(m.text.blocks,a).forEach(function(r){taken.push(r)})})});
+  return (m.cands||[]).filter(function(c){return!taken.some(function(r){return r.bi===c.bi&&c.s<r.e&&r.s<c.e})})}
+/* One row per pattern, not per match, so five uses of one word are one thing to look at. */
+function cueGroups(m){
+  var by={},out=[];
+  cueSpans(m).forEach(function(c){if(!c.check)return;var g=by[c.pid];
+    if(!g){g=by[c.pid]={pid:c.pid,pname:c.pname,check:c.check,fam:c.fam,words:[],n:0};out.push(g)}
+    g.n++;if(g.words.indexOf(c.phrase)<0)g.words.push(c.phrase)});
+  return out.sort(function(a,b){return b.n-a.n})}
+function cuesHTML(m){
+  var gs=cueGroups(m);if(!gs.length)return"";
+  var pl=S.level==="plain";
+  /* The library's check question is written for an analyst and would fail the plain-language
+     reading standard, so plain language gets the words and the count and nothing else. Neither
+     version says anything about this measure, which is the whole point of the tier. */
+  return'<div class="stack cues"><h3>'+(pl?"Worth a look":"Phrases the library watches for")+'</h3><p class="small">'+
+    (pl?"Words in this bill that have caused trouble in other laws. That is all this is. No one has checked whether they matter here.":
+        "Cue phrases from the pattern library matched against this text. A match is not a finding: it carries no severity, no confidence and no claim about this measure. None has been reviewed and none of the questions below has been answered here.")+'</p>'+
+    '<button type="button" class="btn'+(S.cues?" on":"")+'" data-act="cues" aria-pressed="'+!!S.cues+'">'+(S.cues?"Hide them in the text":"Show them in the text")+'</button>'+
+    '<ul class="plist cuel">'+gs.map(function(g){
+      var words=g.words.map(function(w){return'<q>'+esc(w)+"</q>"}).join(", "),where=g.n+(g.n>1?" places":" place");
+      if(pl)return'<li><span class="cq">'+words+" ("+where+')</span><div class="small">Watched for because of: '+esc(g.pname)+". No one has checked this one.</div></li>";
+      return'<li><span class="cq">'+esc(g.check)+'</span><div class="small">Matched on '+words+" ("+where+'). Library pattern: '+esc(g.pname)+". Not reviewed, not answered.</div></li>"}).join("")+"</ul></div>"}
 function paneFindings(m){
   var fs=listFindings(m,function(f){return f.det!=="absence"&&f.det!=="external"&&!f.note}),notes=m.analysis.findings.filter(function(f){return f.note});
   var top=fs.filter(function(f){return f.sev!=="minor"||f.id===S.sel}),minor=fs.filter(function(f){return f.sev==="minor"&&f.id!==S.sel});
@@ -602,7 +634,7 @@ function paneFindings(m){
   if(minor.length){h+='<button type="button" class="btn" data-act="minor">'+(S.showMinor?"Hide":"Show")+" "+minor.length+" minor "+(S.level==="plain"?"issue":"finding")+(minor.length>1?"s":"")+"</button>";if(S.showMinor)h+=minor.map(function(f){return cardHTML(m,f)}).join("")}
   if(!fs.length)h+='<p class="small">No findings match these filters.</p>';
   if(notes.length)h+='<div class="stack"><h3>Drafting notes</h3><p class="small">Errors with no practical consequence that were found along the way. They are not counted as findings.</p>'+notes.map(function(f){var am=(f.am||[])[0],on=am&&(S.acc[m.analysis.id]||{})[am.id];return'<div class="q" id="card-'+esc(f.id)+'" style="border-top:1px solid var(--soft-2);padding-top:8px"><b>'+esc(f.title)+"</b><span>"+esc(f.plain)+"</span>"+(am?'<div class="row"><button type="button" class="btn'+(on?" on":"")+'" data-act="acc" data-f="'+esc(f.id)+'" data-am="'+esc(am.id)+'">'+(on?"Fix accepted":"Accept the fix")+"</button></div>":"")+"</div>"}).join("")+"</div>";
-  if(m.cands&&m.cands.length)h+='<div class="note">'+m.cands.length+" phrase matches are marked with dotted underlines. They come from matching the pattern library's cue phrases and have not been reviewed.</div>";
+  h+=cuesHTML(m);
   return h}
 function paneMissing(m){
   var ab=listFindings(m,function(f){return f.det==="absence"}),ex=listFindings(m,function(f){return f.det==="external"});
@@ -635,6 +667,8 @@ function paneReason(m){
 function memoText(m){var A=m.analysis,L=[];L.push("RED TEAM MEMO: "+A.short+" ("+A.cite+")","",A.cls.banner,"","PROMISE AUDIT");
   A.promises.forEach(function(p){L.push("- "+p.p+": "+VER[p.v]+". "+p.why)});L.push("","FINDINGS");
   A.findings.slice().sort(function(a,b){return SEVN[a.sev]-SEVN[b.sev]}).forEach(function(f){L.push("["+f.sev.toUpperCase()+", "+KIND[f.kind]+"] "+f.title,"  "+f.plain);arr(f.a).forEach(function(a){L.push('  Text: "'+a.q+'"')});(f.s||[]).forEach(function(s){if(s.u)L.push("  Source: "+s.l+" "+s.u)})});
+  var cg=cueGroups(m);if(cg.length){L.push("","PHRASES TO CHECK (not findings, not reviewed, not answered)");
+    cg.forEach(function(g){L.push("- "+g.check,'  Matched on "'+g.words.join('", "')+'" in '+g.n+" place(s). Library pattern: "+g.pname)})}
   var ac=acceptedAms(m);if(ac.length){L.push("","ACCEPTED AMENDMENTS");ac.forEach(function(x){L.push("- "+x.am.instr,"  Cost: "+x.am.cost)})}
   return L.join("\n")}
 function billText(m){var A=m.analysis,ac=acceptedAms(m);if(!ac.length)return"";
@@ -741,7 +775,7 @@ function waitTick(){var w=el("wait");if(!w){clearInterval(WAIT.iv);WAIT.iv=0;ret
 function waitStart(nblocks){WAIT.i=0;WAIT.t0=Date.now();WAIT.est=Math.max(300,Math.min(1200,300+nblocks*4));clearInterval(WAIT.iv);WAIT.iv=setInterval(waitTick,1000);setTimeout(waitTick,30)}
 
 /* ---------- alternative views: step by step, and one-page summary ---------- */
-S.mode=ls("mode")||"walk";S.wstep={};S.word=ls("word")||"sev";
+S.mode=ls("mode")||"walk";S.wstep={};S.word=ls("word")||"sev";S.cues=false;
 var MODES=[["walk","Step by step"],["brief","One-page summary"],["dash","Full analysis"]];
 function modeSwitch(){return'<div class="modes" role="group" aria-label="How to read it"><span class="ml2">How to read it</span>'+MODES.map(function(x){return'<button type="button" data-act="mode" data-md="'+x[0]+'" aria-pressed="'+(S.mode===x[0])+'">'+x[1]+"</button>"}).join("")+"</div>"}
 function bannerHTML(m){var A=m.analysis,pl=PL(m);
@@ -794,7 +828,7 @@ function walkHTML(m){var steps=walkSteps(m),n=steps.length;
   return'<main class="walk"><div class="wcol"><div class="wstage"><div class="whd"><span id="wloc"></span><span id="wcount"></span></div><button type="button" class="wbtn" data-act="wprev" aria-label="Previous issue">'+CHV("M15 4l-8 8 8 8")+'</button><div class="wtext" aria-label="Text of the measure"><div class="wscroll" id="wscroll" tabindex="0">'+walkText(m)+'</div></div><button type="button" class="wbtn" data-act="wnext" aria-label="Next issue">'+CHV("M9 4l8 8-8 8")+'</button><nav class="wdots" aria-label="Steps">'+steps.map(function(st,k){var lb=st.t==="intro"?"Start":st.t==="end"?"End":k+". "+fTitle(m,st.f);return'<button type="button" data-act="wgo" data-i="'+k+'" title="'+esc(lb)+'" aria-label="'+esc(lb)+'"></button>'}).join("")+'</nav></div><section class="wissue" id="wcard" aria-live="polite"></section></div></main>'}
 var RM=false;try{RM=window.matchMedia("(prefers-reduced-motion: reduce)").matches}catch(e){}
 var WT=0;
-function walkGo(i,instant){var m=cur();if(!m)return;var steps=walkSteps(m),n=steps.length;i=Math.max(0,Math.min(n-1,i));S.wstep[m.analysis.id]=i;
+function walkGo(i,instant){var m=cur();if(!m)return;var steps=walkSteps(m),n=steps.length;i=Math.max(0,Math.min(n-1,i));S.wstep[m.analysis.id]=i;setAddr(true);
   var st=steps[i],card=el("wcard"),sc=el("wscroll");if(!card||!sc)return;
   card.innerHTML=walkCard(m,st,i,n);
   var col=document.querySelector(".wcol"),was=col.classList.contains("bare");col.classList.toggle("bare",st.t!=="f");if(was)instant=true;
@@ -844,6 +878,7 @@ document.addEventListener("keydown",function(ev){if(S.mode!=="walk"||!cur()||S.v
 
 /* ---------- render ---------- */
 function render(){
+  setAddr();
   el("lv-plain").setAttribute("aria-pressed",S.level==="plain");el("lv-pro").setAttribute("aria-pressed",S.level==="pro");
   var mv=cur(),pk='<button type="button" class="pill" data-act="view" data-v="home" aria-pressed="'+(S.view==="home")+'">Home</button><button type="button" class="pill" data-act="view" data-v="new" data-tour="analyze" aria-pressed="'+(S.view==="new")+'">Analyze a measure</button><button type="button" class="pill" data-act="examples">Examples</button><button type="button" class="pill" data-act="view" data-v="library" aria-pressed="'+(S.view==="library")+'">Knowledge base</button><button type="button" class="pill" data-act="tour">Take the tour</button>';
   if(mv&&S.view!=="home"&&S.view!=="new"&&S.view!=="library")pk+='<span class="nowv">'+esc(mv.analysis.short)+"</span>";
@@ -876,12 +911,13 @@ document.addEventListener("click",function(ev){
   var a=b.dataset.act,m=cur();
   if(a==="examples"){S.view="home";render();var ex=el("examples");if(ex)ex.scrollIntoView({behavior:RM?"auto":"smooth",block:"start"});return}
   if(a==="tour"){tourStart();return}
-  if(a==="view"){if(M[b.dataset.v]||b.dataset.v==="live"){S.mode="walk";S.wstep[b.dataset.v]=0}S.view=b.dataset.v;S.sel=null;S.tab="overview";S.hard=false;S.mob="text";S.fKind="";S.fFam="";try{location.hash=S.view}catch(e){}render()}
+  if(a==="view"){if(M[b.dataset.v]||b.dataset.v==="live"){S.mode="walk";S.wstep[b.dataset.v]=0}S.view=b.dataset.v;S.sel=null;S.tab="overview";S.hard=false;S.mob="text";S.fKind="";S.fFam="";render()}
   else if(a==="tab"){S.tab=b.dataset.t;render();var p=document.querySelector(".col.panel");if(p)p.scrollTop=0}
   else if(a==="mob"){S.mob=b.dataset.m;render()}
   else if(a==="sel"){select(b.dataset.f,"card")}
   else if(a==="goto"){select(b.dataset.f,"goto")}
   else if(a==="minor"){S.showMinor=!S.showMinor;render()}
+  else if(a==="cues"){S.cues=!S.cues;render()}
   else if(a==="toam"){S.tab="draft";S.mob="panel";render();var g=el("amg-"+b.dataset.f);if(g)g.scrollIntoView({block:"start"})}
   else if(a==="outmode"&&m){(S.out=S.out||{})[m.analysis.id]=b.dataset.o;render()}
   else if(a==="hard0"||a==="hard1"){S.hard=a==="hard1";S.mob="text";render()}
@@ -902,7 +938,85 @@ document.addEventListener("change",function(ev){var t=ev.target;
   else if(t.id==="n-file"&&t.files&&t.files[0]){readFile(t.files[0])}
   else if(t.id==="n-url"){var c=classifyUrl(t.value),n=el("n-urlnote");if(n&&c)n.textContent="Recognized from the link: "+c+". This page cannot retrieve pages from other sites, so the text still needs to be pasted or uploaded."}});
 var libT;document.addEventListener("input",function(ev){if(ev.target.id==="lib-q"){S.libQ=ev.target.value;clearTimeout(libT);libT=setTimeout(function(){render();var e=el("lib-q");if(e){e.focus();e.setSelectionRange(e.value.length,e.value.length)}},180)}});
-function goHash(){var h=(location.hash||"").replace("#","");if(h&&(M[h]||h==="new"||h==="library"||h==="home"||(h==="live"&&S.live))){S.view=h;render()}}
+/* ---------- addresses ---------- */
+/* Every page has an address of its own, so any view can be linked to, bookmarked or shared. The
+   address is written from the state and read back into it, and the five lists below are the only
+   place an address word is written down. tests/test_addresses.py holds every mode, every tab and
+   every knowledge base tab to having one, so a view added later cannot quietly end up with no
+   address. The short addresses the site has always answered on, such as #saa, #library and #new,
+   still work and land where clicking through lands. The front page's address is the bare site
+   address, with no fragment at all. */
+var ADDR_MODE={walk:"step-by-step",brief:"summary",dash:"analysis"};
+var ADDR_TAB={overview:"overview",findings:"wording",missing:"missing",roles:"conflicts",stake:"stakeholders",bigger:"bigger-picture",draft:"amendments"};
+var ADDR_LIB={patterns:"patterns",standards:"standards",method:"method",rules:"follow-up-questions",two:"two-sided",coi:"conflicts",sources:"sources",types:"measure-types",questions:"question-types",glossary:"glossary"};
+var ADDR_PAGE={home:"",new:"analyze"};
+var ADDR_OLD={home:"home","new":"new",library:"library"};
+/* What the address bar held when the page opened, read before anything here writes to it, because
+   the tour starts only for a reader who arrived with no address of their own. */
+var ADDR_ARRIVED=(location.hash||"").replace(/^#/,"");
+function addrKey(map,word){for(var k in map){if(map[k]===word)return k}return null}
+function addrStep(v){var m=M[v]||(v==="live"?S.live:null);return S.wstep[m?m.analysis.id:v]||0}
+function addrFor(){
+  var v=S.view;
+  if(v==="library")return "library/"+(ADDR_LIB[S.libTab]||"patterns");
+  if(v==="home"||v==="new")return ADDR_PAGE[v];
+  if(!M[v]&&!(v==="live"&&S.live))return "";
+  var a=v+"/"+(ADDR_MODE[S.mode]||"step-by-step");
+  if(S.mode==="dash")return a+"/"+(ADDR_TAB[S.tab]||"overview");
+  if(S.mode==="walk"){var i=addrStep(v);if(i>0)return a+"/"+i}
+  return a}
+/* The state an address asks for, or null if the address names nothing this page has. An address
+   that names nothing is left alone rather than silently shown as some other page. */
+function readAddr(h){
+  h=String(h||"").replace(/^#/,"");
+  try{h=decodeURIComponent(h)}catch(e){}
+  h=h.replace(/^\/+|\/+$/g,"").toLowerCase();
+  if(!h)return {view:"home"};
+  var p=h.split("/");
+  if(p[0]==="library"){if(p.length>2)return null;
+    var lt=p[1]?addrKey(ADDR_LIB,p[1]):"patterns";return lt?{view:"library",libTab:lt}:null}
+  if(p.length===1&&p[0]==="home")return {view:"home"};
+  if(p.length===1&&(p[0]==="analyze"||p[0]==="new"))return {view:"new"};
+  if(M[p[0]]||p[0]==="live"){
+    var md=p[1]?addrKey(ADDR_MODE,p[1]):"walk";if(!md)return null;
+    var st={view:p[0],mode:md};
+    if(md==="dash"){if(p.length>3)return null;st.tab=p[2]?addrKey(ADDR_TAB,p[2]):"overview";if(!st.tab)return null}
+    else if(md==="walk"){if(p.length>3)return null;
+      if(p[2]!=null&&!/^[0-9]+$/.test(p[2]))return null;
+      st.step=p[2]?parseInt(p[2],10):0}
+    else if(p.length>2)return null;
+    return st}
+  return null}
+/* Write the address the state now stands at. It replaces the entry in the reader's history rather
+   than adding one in three cases: moving within a page, which is stepping through the findings, so
+   that the back button leaves the measure instead of walking back through thirty steps; the front
+   page, whose address is the bare site address; and anything the reader themself put in the
+   address bar, which is already an entry of its own and must not be doubled. */
+var ADDR_FROM_BAR=false;
+function setAddr(replace){
+  var h=addrFor(),want=h?"#"+h:"";
+  if(want===location.hash)return;
+  if(replace||ADDR_FROM_BAR||!h){try{history.replaceState(null,"",location.pathname+location.search+want);return}catch(e){}}
+  try{location.hash=h}catch(e){}}
+/* An address from the address bar, a link or the back button. Anything this page cannot show is
+   refused, and the address is then put back to the page the reader is actually looking at, so the
+   address bar never names one page while another is on screen. */
+function goHash(){
+  var h=(location.hash||"").replace(/^#/,"");
+  if(h===addrFor())return;
+  var st=readAddr(h);
+  if(!st||!st.view||(st.view==="live"&&!S.live)){setAddr(true);return}
+  S.view=st.view;S.sel=null;S.hard=false;S.mob="text";S.fKind="";S.fFam="";
+  if(st.libTab)S.libTab=st.libTab;
+  if(st.mode)S.mode=st.mode;
+  S.tab=st.tab||"overview";
+  /* The amendments tab exists in the professional view only, so an address that names it asks for
+     that view. Without this the address bar would say amendments while the page showed the
+     summary. The reader's own saved choice is left alone, because this is one visit, not a change
+     of preference. */
+  if(S.tab==="draft")S.level="pro";
+  if(st.mode==="walk")S.wstep[(M[st.view]||S.live||{analysis:{id:st.view}}).analysis.id]=st.step||0;
+  ADDR_FROM_BAR=true;try{render()}finally{ADDR_FROM_BAR=false}}
 window.addEventListener("hashchange",goHash);
 
 /* ---------- calls to the analysis service ---------- */
@@ -945,7 +1059,13 @@ function offlineClassify(blocks){var head=blocks.slice(0,6).map(function(b){retu
   return c}
 var CUE1={"may":1,"practicable":1,"feasible":1,"appropriate":1,"reasonable":1,"substantially":1,"notwithstanding":1};
 function cueScan(blocks){var out=[],seen={};KB.forEach(function(p){if(p.detect!=="word")return;(p.cues||[]).forEach(function(c){c=c.toLowerCase();if(c.indexOf(" ")<0&&!CUE1[c])return;var re=new RegExp("\\b"+c.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"\\b","gi");
-    blocks.forEach(function(b,bi){var mm;while((mm=re.exec(b.text))&&out.length<400){var key=bi+":"+mm.index;if(seen[key])continue;seen[key]=1;out.push({i:out.length,bi:bi,s:mm.index,e:mm.index+mm[0].length,name:p.name+": "+p.plain})}})})});return out}
+    blocks.forEach(function(b,bi){var mm;while((mm=re.exec(b.text))&&out.length<400){var key=bi+":"+mm.index;if(seen[key])continue;seen[key]=1;out.push({i:out.length,bi:bi,s:mm.index,e:mm.index+mm[0].length,pid:p.id,pname:p.name,check:p.check||"",fam:p.family,phrase:c,name:p.name+": "+p.plain})}})})});return out}
+/* A cue is a phrase the library watches for, found in this text and nothing more. It is not a
+   finding: no severity, no confidence, no statement about this measure, and no field in which one
+   could be written. The phrase scan runs on the four stored measures as well as on an uploaded
+   text, so the weaker tier is visible beside real findings and not only on the upload path. This
+   runs here, below cueScan, because CUE1 is assigned above it and not before. */
+Object.keys(M).forEach(function(k){M[k].cands=cueScan(M[k].text.blocks)});
 var ctl=null;
 function setBusy(t){var was=S.busy;S.busy=t;if(t)WAIT.i=waitStepOf(t);var s=el("n-status");if(s&&t&&was&&el("wait")){s.textContent=t;waitTick()}else render()}
 function kbDigest(){var by={};KB.forEach(function(p){if(p.detect==="process"||p.detect==="external"||p.origin==="pack-ai")return;(by[p.family]=by[p.family]||[]).push(p.name+(p.check?" ("+p.check+")":""))});return Object.keys(by).map(function(f){return FAM[f]+" ["+f+"]:\n- "+by[f].join("\n- ")}).join("\n")}
@@ -1087,7 +1207,7 @@ document.addEventListener("keydown",function(ev){if(TI<0)return;if(ev.key==="Esc
 window.addEventListener("resize",tourPlace);
 
 goHash();render();
-if(!ls("toured")&&S.view==="home"&&!(location.hash||"").replace("#",""))setTimeout(function(){if(TI<0&&S.view==="home")tourStart()},900);
+if(!ls("toured")&&S.view==="home"&&!ADDR_ARRIVED)setTimeout(function(){if(TI<0&&S.view==="home")tourStart()},900);
 })();
 </script>
 
