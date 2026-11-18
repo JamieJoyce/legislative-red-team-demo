@@ -304,6 +304,11 @@ details.legal>div{margin-top:6px}
 .stat{background:rgba(255,255,255,.08);border-radius:4px;padding:14px 16px;display:grid;gap:5px;align-content:start}
 .stat b{font:600 30px/1 var(--f-head);color:#fff}
 .stat span{font-size:13.5px;color:var(--on-bg-2);line-height:1.45}
+.notrun{background:rgba(250,199,117,.1);border-bottom:1px solid rgba(250,199,117,.45)}
+.notrun-in{display:flex;gap:12px;align-items:flex-start;padding-block:14px;max-width:980px;margin:0 auto}
+.notrun .nr{display:grid;gap:7px;justify-items:start}
+.notrun h3{font:600 18px/1.25 var(--f-head);color:#fff;margin:0;text-transform:none;letter-spacing:normal}
+.notrun p{margin:0;font-size:14.5px;line-height:1.55;color:var(--on-bg-2);max-width:72ch}
 .soon{border:1px dashed rgba(250,199,117,.6);background:rgba(250,199,117,.09);border-radius:4px;padding:16px 18px;display:grid;gap:8px}
 .srow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .soon h3{font:600 19px/1.25 var(--f-head);color:#fff;margin:0;text-transform:none;letter-spacing:normal}
@@ -510,7 +515,14 @@ function ls(k,v){try{if(v===undefined){var r=localStorage.getItem("lrt."+k);retu
 S.acc=ls("acc")||{};S.marks=ls("marks")||{};S.level=ls("level")||"plain";
 var sample=null;
 var PLAINQ="What loopholes, red flags, conflicts of interest, missing context, or gaps exist in this legislation, if any: ";
-if(window.claude&&window.claude.use){window.claude.use("sample").then(function(s){sample=s;render()}).catch(function(){})}
+/* Whether this copy of the page can run an analysis at all. The published site is static and has
+   no model access, so it cannot, and it does not offer the form: a reader is told the feature is
+   not live rather than being walked through a run that checks nothing. Inside the Claude artifact
+   the same template does have model access, and there the form works as it always has. Decision
+   D91 (project lead, November 17, 2026): "Just stop people from uploading altogether and say:
+   this feature is not live yet, but it will be soon!" */
+var CAN_ANALYZE=!!(window.claude&&window.claude.use);
+if(CAN_ANALYZE){window.claude.use("sample").then(function(s){sample=s;render()}).catch(function(){})}
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function el(id){return document.getElementById(id)}
@@ -660,19 +672,19 @@ function paneFindings(m){
   var h=S.level==="plain"?'<div class="stack hd"><h2>Problems in the wording</h2><p class="small">Each one points to the exact words in the bill. Tap a highlighted passage in the bill, or a card here.</p></div>':'<div class="stack hd"><h2>What the words do</h2><p class="small">Each flag is tied to exact words in the text. Select a highlight or a card.</p>'+filtersHTML(m)+"</div>";
   h+=top.map(function(f){return cardHTML(m,f)}).join("");
   if(minor.length){h+='<button type="button" class="btn" data-act="minor">'+(S.showMinor?"Hide":"Show")+" "+minor.length+" minor "+(S.level==="plain"?"issue":"finding")+(minor.length>1?"s":"")+"</button>";if(S.showMinor)h+=minor.map(function(f){return cardHTML(m,f)}).join("")}
-  if(!fs.length)h+='<p class="small">No findings match these filters.</p>';
+  if(!fs.length)h+='<p class="small">'+(notRun(m)?(S.level==="plain"?"Nothing has been checked here yet.":"No findings, because the analysis did not run."):"No findings match these filters.")+'</p>';
   if(notes.length)h+='<div class="stack"><h3>Drafting notes</h3><p class="small">Errors with no practical consequence that were found along the way. They are not counted as findings.</p>'+notes.map(function(f){var am=(f.am||[])[0],on=am&&(S.acc[m.analysis.id]||{})[am.id];return'<div class="q" id="card-'+esc(f.id)+'" style="border-top:1px solid var(--soft-2);padding-top:8px"><b>'+esc(f.title)+"</b><span>"+esc(f.plain)+"</span>"+(am?'<div class="row"><button type="button" class="btn'+(on?" on":"")+'" data-act="acc" data-f="'+esc(f.id)+'" data-am="'+esc(am.id)+'">'+(on?"Fix accepted":"Accept the fix")+"</button></div>":"")+"</div>"}).join("")+"</div>";
   h+=cuesHTML(m);
   return h}
 function paneMissing(m){
   var ab=listFindings(m,function(f){return f.det==="absence"}),ex=listFindings(m,function(f){return f.det==="external"});
-  return'<div class="stack hd"><h2>'+(S.level==="plain"?"What the bill leaves out":"What is missing")+'</h2><p class="small">'+(S.level==="plain"?"Things a law like this would usually need, and this one does not have. There are no words to highlight, because the words are not there.":"Provisions a measure with this purpose would need and does not have. There are no words to highlight, so each is pinned to where it would belong.")+'</p></div>'+(ab.map(function(f){return cardHTML(m,f)}).join("")||'<p class="small">None found.</p>')+
-    '<div class="stack hd"><h2>'+(S.level==="plain"?"What you can only see from outside the bill":"Outside the text")+'</h2><p class="small">'+(S.level==="plain"?"Things you would not know from reading the bill alone, such as who else is involved and what has happened before.":"What only research beyond the measure can show: other actors, existing law, past behavior.")+'</p></div>'+(ex.map(function(f){return cardHTML(m,f)}).join("")||'<p class="small">None recorded.</p>')}
+  return'<div class="stack hd"><h2>'+(S.level==="plain"?"What the bill leaves out":"What is missing")+'</h2><p class="small">'+(S.level==="plain"?"Things a law like this would usually need, and this one does not have. There are no words to highlight, because the words are not there.":"Provisions a measure with this purpose would need and does not have. There are no words to highlight, so each is pinned to where it would belong.")+'</p></div>'+(ab.map(function(f){return cardHTML(m,f)}).join("")||'<p class="small">'+(notRun(m)?"Not checked.":"None found.")+'</p>')+
+    '<div class="stack hd"><h2>'+(S.level==="plain"?"What you can only see from outside the bill":"Outside the text")+'</h2><p class="small">'+(S.level==="plain"?"Things you would not know from reading the bill alone, such as who else is involved and what has happened before.":"What only research beyond the measure can show: other actors, existing law, past behavior.")+'</p></div>'+(ex.map(function(f){return cardHTML(m,f)}).join("")||'<p class="small">'+(notRun(m)?"Not checked.":"None recorded.")+'</p>')}
 function paneOverview(m){
   var A=m.analysis,c={critical:0,significant:0,minor:0},am=0;A.findings.forEach(function(f){if(!f.note)c[f.sev]++;am+=(f.am||[]).length});
   var pl=S.level==="plain";
-  var h='<div class="stack"><h2>'+esc(A.short)+'</h2><div class="tally"><div><b>'+c.critical+"</b><span>"+(pl?"serious":"critical")+"</span></div><div><b>"+c.significant+"</b><span>"+(pl?"important":"significant")+"</span></div><div><b>"+c.minor+"</b><span>minor</span></div>"+(pl?"":"<div><b>"+am+"</b><span>amendments drafted</span></div>")+"</div>"+
-    (S.level==="pro"?'<p class="small"><b>Checks applied:</b> '+esc(A.cls.checks)+"</p>":"")+(A.live?'<div class="warn">This analysis was produced from the text alone. Claims about outside facts were not researched and are marked unverified.'+(A.runNote?" "+esc(A.runNote):"")+"</div>":"")+"</div>";
+  var h='<div class="stack"><h2>'+esc(A.short)+'</h2>'+(notRun(m)?'<p class="small">'+(pl?"Not checked. The counts appear once a bill has been through the full check.":"Not checked. Counts appear once the analysis has run.")+'</p>':'<div class="tally"><div><b>'+c.critical+"</b><span>"+(pl?"serious":"critical")+"</span></div><div><b>"+c.significant+"</b><span>"+(pl?"important":"significant")+"</span></div><div><b>"+c.minor+"</b><span>minor</span></div>"+(pl?"":"<div><b>"+am+"</b><span>amendments drafted</span></div>")+"</div>")+
+    (S.level==="pro"?'<p class="small"><b>Checks applied:</b> '+esc(A.cls.checks)+"</p>":"")+(A.live&&!notRun(m)?'<div class="warn">This analysis was produced from the text alone. Claims about outside facts were not researched and are marked unverified.'+(A.runNote?" "+esc(A.runNote):"")+"</div>":"")+"</div>";
   h+='<div class="stack"><h3>What it says it is for</h3>'+A.purpose.stated.map(function(s){return'<div class="quote">'+esc(s.t)+' <span class="small">('+esc(s.w)+")</span></div>"}).join("")+"</div>";
   if(A.purpose.marketed&&A.purpose.marketed.length)h+='<div class="stack"><h3>How it has been described</h3>'+A.purpose.marketed.map(function(s){return'<div class="quote">'+esc(s.t)+" "+(s.u?'<a class="small" href="'+esc(s.u)+'" target="_blank" rel="noopener">'+esc(s.l)+"</a>":'<span class="small">'+esc(s.l||"")+"</span>")+"</div>"}).join("")+"</div>";
   var L=A.purpose.ladder;if(L&&!pl)h+='<div class="stack"><h3>Three levels of purpose</h3><dl class="kv"><dt>Mechanism</dt><dd>'+esc(L.mechanism)+'</dd></dl><dl class="kv"><dt>Outcome</dt><dd>'+esc(L.outcome)+'</dd></dl><dl class="kv"><dt>Larger aim</dt><dd>'+esc(L.aim)+"</dd></dl></div>";
@@ -732,7 +744,7 @@ function paneStake(m){var A=m.analysis,pl=S.level==="plain",by={};
 var TABS=[["overview","Overview"],["findings","In the text"],["missing","Missing and outside"],["roles","Conflicts of interest"],["stake","Stakeholders"],["bigger","Bigger picture"],["draft","Amendments"]];
 var TABSP={overview:"Summary",findings:"Problems in the wording",missing:"What's missing",roles:"Conflicts of interest",stake:"Who is affected",bigger:"Bigger picture",draft:"Amendments"};
 function panelHTML(m){var A=m.analysis,nT=A.findings.filter(function(f){return f.det!=="absence"&&f.det!=="external"&&!f.note}).length,nM=A.findings.filter(function(f){return f.det==="absence"||f.det==="external"}).length,nA=acceptedAms(m).length;
-  var ct={findings:nT,missing:nM,draft:nA};if(A.conflicts&&A.conflicts.length)ct.roles=A.conflicts.length;
+  var ct=notRun(m)?{}:{findings:nT,missing:nM,draft:nA};if(!notRun(m)&&A.conflicts&&A.conflicts.length)ct.roles=A.conflicts.length;
   var body={overview:paneOverview,findings:paneFindings,missing:paneMissing,roles:paneRoles,stake:paneStake,bigger:paneBigger,draft:paneDraft};var tabs=TABS.filter(function(t){return!(S.level==="plain"&&t[0]==="draft")});if(!tabs.some(function(t){return t[0]===S.tab}))S.tab="overview";body=body[S.tab](m);
   return'<div class="tabs" role="tablist">'+tabs.map(function(t){return'<button type="button" role="tab" data-act="tab" data-t="'+t[0]+'" aria-selected="'+(S.tab===t[0])+'">'+(S.level==="plain"?TABSP[t[0]]:t[1])+(ct[t[0]]!=null?'<span class="ct">'+ct[t[0]]+"</span>":"")+"</button>"}).join("")+'</div><div class="pane" role="tabpanel">'+body+"</div>"}
 
@@ -774,7 +786,13 @@ function libHTML(){
   return h+"</div></div>"}
 
 /* ---------- new measure ---------- */
-function newHTML(){var b=S.busy;
+function notLiveHTML(){var pl=S.level==="plain";
+  return'<div class="page"><div class="page-in gut"><section class="stack hd"><span class="badge">Coming soon</span>'+
+    '<h2 style="font-size:24px">'+(pl?"You cannot send in a bill yet":"Analyzing your own measure is not live yet")+'</h2>'+
+    '<p class="lead" style="max-width:66ch">'+(pl?"This part is not switched on yet. It will be soon. Until then you can read the four measures that have already been checked, and see exactly what the tool does.":"This feature is not live yet. It will be soon. Until it is, the four measures that have already been analyzed show exactly what the tool produces.")+'</p>'+
+    '<div class="row"><button type="button" class="btn pri" data-act="examples">'+(pl?"Read one that is done":"Open an example")+'</button>'+
+    '<button type="button" class="btn ghostb" data-act="view" data-v="library">'+(pl?"See how it works":"See the method")+'</button></div></section></div></div>'}
+function newHTML(){if(!CAN_ANALYZE)return notLiveHTML();var b=S.busy;
   return'<div class="page">'+(b?waitHTML():"")+'<div class="page-in gut"'+(b?" hidden":"")+'><div class="stack hd"><h2 style="font-size:24px">Analyze a measure</h2><p class="lead" style="max-width:70ch">Paste the text of a bill or resolution, or upload a PDF, Word or text file. The tool checks its promises, finds problems in the wording, names conflicts of interest and drafts amendments.</p></div>'+
   '<label class="f">Link to the measure (optional)<input type="url" id="n-url" placeholder="https://www.congress.gov/bill/119th-congress/house-bill/8470"></label><p class="small" id="n-urlnote">This page cannot retrieve pages from other sites. A link is used to identify the type of measure; the text still needs to be pasted or uploaded.</p>'+
   '<label class="f">Upload a file<input type="file" id="n-file" accept=".pdf,.docx,.txt,.htm,.html,.xml"></label>'+
@@ -782,7 +800,7 @@ function newHTML(){var b=S.busy;
   '<label class="f">What is this text?<select id="n-kind"><option value="bill">A bill that has been introduced, or a law already passed</option><option value="draft">A draft that is still being written</option></select></label>'+
   '<label class="f">Press release or sponsor statement (optional, used for the promise audit)<textarea id="n-press" style="min-height:90px"></textarea></label>'+
   '<div class="row"><button type="button" class="btn pri" data-act="analyze"'+(b?" disabled":"")+">"+(b?"Working...":"Run the red team")+"</button>"+(b?'<button type="button" class="btn" data-act="stop">Stop</button>':"")+"</div>"+
-  '<div id="n-status" class="'+(b?"note":"small")+'">'+(b?esc(b):(sample?"The analysis runs in six steps and takes several minutes.":"This demonstration site cannot run a full analysis of a new measure. It will classify the measure and mark phrases that match known patterns, labeled as unreviewed."))+"</div>"+
+  '<div id="n-status" class="'+(b?"note":"small")+'">'+(b?esc(b):(sample?"The analysis runs in six steps and takes several minutes.":"The analysis service is not ready in this window. Until it is, running this would only classify the measure and mark phrases worth a look, and nothing would be checked."))+"</div>"+
   (S.newErr?'<div class="warn">'+esc(S.newErr)+"</div>":"")+"</div></div>"}
 
 
@@ -806,9 +824,20 @@ function waitStart(nblocks){WAIT.i=0;WAIT.t0=Date.now();WAIT.est=Math.max(300,Ma
 S.mode=ls("mode")||"walk";S.wstep={};S.word=ls("word")||"sev";S.cues=false;
 var MODES=[["walk","Step by step"],["brief","One-page summary"],["dash","Full analysis"]];
 function modeSwitch(){return'<div class="modes" role="group" aria-label="How to read it"><span class="ml2">How to read it</span>'+MODES.map(function(x){return'<button type="button" data-act="mode" data-md="'+x[0]+'" aria-pressed="'+(S.mode===x[0])+'">'+x[1]+"</button>"}).join("")+"</div>"}
+/* True when a result was produced without the analysis running. The published site has no model
+   access, so it classifies the measure, scans for the library's cue phrases, and stops. Every
+   count and every statement of absence has to be held back in that case. "0 issues" or "none
+   found", said after looking for nothing, is a verdict the tool has not earned, and a reader takes
+   it as one about their own bill. Working principle 5, and the absence rule. Decision D90. */
+function notRun(m){return !!(m&&m.analysis&&m.analysis.notRun)}
+function notRunHTML(){var pl=S.level==="plain";
+  return'<section class="notrun"><div class="notrun-in gut"><span class="badge">Coming soon</span><div class="nr"><h3>'+(pl?"The full check did not run":"The full analysis did not run")+'</h3><p>'+
+    (pl?"This site cannot do the full check yet. It read your text, worked out what kind of measure it is, and marked words that have caused trouble in other laws. No one has looked at those words, and no one has checked this bill for problems. Nothing on this page means your bill is fine.":
+        "This demonstration site cannot run the analysis. It classified the measure and matched the pattern library's cue phrases against the text, and nothing else. No finding, no absence and no conflict of interest has been looked for, so nothing here is evidence that this measure is sound.")+
+    '</p><button type="button" class="btn" data-act="view" data-v="saa" data-md="dash" data-t="overview">'+(pl?"See one that was checked":"See a completed analysis")+'</button></div></div></section>'}
 function bannerHTML(m){var A=m.analysis,pl=PL(m);
   return'<section class="banner'+(S.mode!=="dash"?" compact":"")+'"><div class="banner-in gut"><div class="brow"><div class="meta"><span class="force '+A.cls.force+'">'+FORCE[A.cls.force]+"</span>"+(S.level==="pro"?"<span><b>"+esc(A.cls.vehicle)+"</b></span><span>"+gloss(esc(A.cls.function))+"</span><span>"+esc(A.cls.stage)+"</span>":"<span>"+esc(A.cite||"")+"</span>")+"</div>"+modeSwitch()+"</div>"+
-    '<p class="what">'+gloss(esc(pl&&pl.banner||A.cls.banner))+'</p><div class="meta"><span>'+esc(A.sponsor||"")+"</span><span>"+esc(A.status||"")+"</span></div></div></section>"}
+    '<p class="what">'+gloss(esc(pl&&pl.banner||A.cls.banner))+'</p><div class="meta"><span>'+esc(A.sponsor||"")+"</span><span>"+esc(A.status||"")+"</span></div></div></section>"+(notRun(m)?notRunHTML():"")}
 function anchorBlock(m,f){var B=m.text.blocks,as=arr(f.a);for(var i=0;i<as.length;i++){var r=locate(B,as[i])[0];if(r)return r.bi}return -1}
 function whereBlock(m,f){var B=m.text.blocks,w=(f.where||"").toLowerCase();
   if(!w||/outside|whole/.test(w))return B.length;
@@ -834,7 +863,7 @@ function walkCard(m,st,i,n){var A=m.analysis,pl=S.level==="plain",h="";
   if(st.t==="intro"){var cnt={critical:0,significant:0,minor:0};order(m).forEach(function(f){cnt[f.sev]++});var tot=n-2;
     h+='<h2 class="wt">'+esc(A.short)+"</h2>";
     h+='<p class="wl">'+gloss(esc(PL(m)&&PL(m).banner||A.cls.banner))+"</p>";
-    h+='<p class="wwhy">'+(pl?"We found ":"")+tot+" "+(pl?"issues":"findings")+": "+[cnt.critical+" "+(pl?"serious":"critical"),cnt.significant+" "+(pl?"important":"significant"),cnt.minor+" minor"].join(", ")+". "+(pl?"Go through them one at a time. Each step shows the words in the bill that the issue is about.":"Each step shows the passage at issue. The arrow keys also work.")+"</p>";
+    h+=notRun(m)?'<p class="wwhy">'+(pl?"There is nothing to step through, because nothing was checked. The words worth a look are in the full analysis.":"There are no findings to step through, because the analysis did not run. The cue phrase matches are in the full analysis.")+'</p>':'<p class="wwhy">'+(pl?"We found ":"")+tot+" "+(pl?"issues":"findings")+": "+[cnt.critical+" "+(pl?"serious":"critical"),cnt.significant+" "+(pl?"important":"significant"),cnt.minor+" minor"].join(", ")+". "+(pl?"Go through them one at a time. Each step shows the words in the bill that the issue is about.":"Each step shows the passage at issue. The arrow keys also work.")+"</p>";
     h+='<div class="wrow"><div class="seg" role="group" aria-label="Order"><button type="button" data-act="word" data-o="sev" aria-pressed="'+(S.word==="sev")+'">Most serious first</button><button type="button" data-act="word" data-o="text" aria-pressed="'+(S.word==="text")+'">In the order of the bill</button></div><button type="button" class="wbtn" data-act="wnext" aria-label="'+(pl?"Show the first issue":"First finding")+'">'+CHV("M9 4l8 8-8 8")+'</button></div>';
     return h}
   if(st.t==="end"){var vc={};A.promises.forEach(function(p){vc[p.v]=(vc[p.v]||0)+1});
@@ -1105,7 +1134,8 @@ function analyze(){
   var numbered=blocks.map(function(b){return"["+b.id+"] "+b.text}).join("\n");
   var cls=offlineClassify(blocks),title=(blocks[0]||{}).text||"Uploaded measure";
   var base={id:"live",short:title.length>46?title.slice(0,44)+"...":title,cite:url||"Uploaded text",sponsor:"",status:"",sourceUrl:/^https?:/.test(url)?url:"",live:true,cls:cls,purpose:{stated:[{t:title,w:"Opening text"}],marketed:[],ladder:null},promises:[],questions:[],findings:[],bigger:null,draft:((el("n-kind")||{}).value==="draft")};
-  if(!sample){S.live=mk({blocks:blocks},base,null,{cands:cueScan(blocks)});base.questions=[{ty:"Purpose",q:"Full self-questioning was not run.",a:"This demonstration site cannot run a full analysis, so only the classification and phrase matching were done."}];S.view="live";S.tab="findings";render();return}
+  if(!sample){base.notRun=true;base.cls.checks="None were applied. The analysis did not run on this site.";
+    S.live=mk({blocks:blocks},base,null,{cands:cueScan(blocks)});base.questions=[{ty:"Purpose",q:"Full self-questioning was not run.",a:"This demonstration site cannot run a full analysis, so only the classification and phrase matching were done."}];S.view="live";S.tab="findings";render();return}
   ctl=new AbortController();var sig=ctl.signal,chars=0;var tick=function(label){return function(u){chars=u.text.length;var ni=waitStepOf(label);if(ni!==WAIT.i){WAIT.i=ni;waitTick()}var s=el("n-status");if(s)s.textContent=label+" ("+chars.toLocaleString()+" characters written)"}};
   var rules="Rules: describe what the wording permits and never assert that a weakness was intended or lobbied for. You cannot browse; do not invent sources, citations, statistics or URLs. Where a claim depends on facts outside the text, set \"unverified\": true. Write for a general reader in short sentences. Never use em dashes. Reply with only one JSON object.";
   waitStart(blocks.length);
@@ -1223,7 +1253,7 @@ function homeHTML(){var ks=Object.keys(M),pl=S.level==="plain";
     [[KB.length,"weakness patterns it checks the wording against"],[COI.types.length,"kinds of conflict of interest it looks for"],[STD.length,"official drafting standards it measures against"],[SRC.length,"sources behind the findings"]]
     .map(function(x){return'<div class="stat"><b>'+x[0]+"</b><span>"+esc(x[1])+"</span></div>"}).join("")+
     '</div><p class="hsub">It takes no position on the policy and gives no verdict. It says only what the words allow.</p></section>';
-  h+='<section class="hsec"><div class="soon"><div class="srow"><span class="badge">Coming soon</span><h3>Analyze a measure of your own</h3></div><p>Not working yet on this site. Paste a bill today and it will tell you what kind of measure it is and mark phrases worth a look, all of them unreviewed. The full analysis you see in the examples above is not available here.</p></div></section>';
+  h+='<section class="hsec"><div class="soon"><div class="srow"><span class="badge">Coming soon</span><h3>Analyze a measure of your own</h3></div><p>Sending in a bill of your own is not live yet. It will be soon. Until then, the four measures above have been through the full analysis and show exactly what the tool produces.</p></div></section>';
   return h+"</div></div>"}
 var TOUR=[
  {prep:function(){S.view="home"},sel:null,t:"Welcome",x:"This tool reads a bill or a law and shows where its words fall short of what was promised. This tour takes about a minute."},
@@ -1238,7 +1268,7 @@ var TOUR=[
  {prep:function(){S.level="pro";S.tab="draft"},sel:'.tabs [data-t="draft"]',t:"Amendments, for professionals",x:"Choose the fixes you want. The tool writes them up as a new bill or as a marked-up rewrite."},
  {prep:function(){S.level="plain";S.mode="walk";var m=cur();if(m)S.wstep[m.analysis.id]=1},sel:".wstage",t:"Step by step",x:"Press the arrows. The page moves to the words each problem is about, and the problem is explained underneath."},
  {prep:function(){S.mode="brief"},sel:".bsheet",t:"One-page summary",x:"The short version on a single page: what the bill is, whether it does what it says, its biggest problems and any conflicts of interest."},
- {prep:function(){S.mode="dash";S.view="home"},sel:'[data-tour="analyze"]',t:"Your turn",x:"Upload a bill of your own here, or open one of the examples below."}];
+ {prep:function(){S.mode="dash";S.view="home"},sel:'[data-tour="analyze"]',t:"Your turn",x:"Your own measure is not live yet. It will be soon. Open one of the examples below to see what the tool produces."}];
 var TI=-1;
 function tourStart(){if(!el("tour")){var d=document.createElement("div");d.id="tour";d.innerHTML='<div class="tblock"></div><div class="thole" id="thole"></div><div class="tcard" id="tcard" role="dialog" aria-live="polite" aria-label="Guided tour"></div>';document.body.appendChild(d)}TI=-1;tourGo(0)}
 function tourEnd(){var t=el("tour");if(t)t.remove();TI=-1;ls("toured",true);S.level=ls("level")||"plain";S.mode="walk";S.view="home";S.tab="overview";render()}
