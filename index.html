@@ -437,7 +437,16 @@ mark.wm.cur{background:#ffe27a;color:#1b2230;border-radius:2px;box-shadow:0 0 0 
 @media (max-width:900px){
   html,body{height:auto}
   body{display:block}
-  .brand,.picker{flex:1 1 100%}
+  .brand{flex:1 1 100%}
+  /* On a narrow screen the navigation used to wrap onto three or four rows, so the headline sat
+     below the fold of the reader's attention before they had read a word. It is one row now, which
+     slides sideways when it does not fit, and nothing is hidden or taken away. It shares a row
+     with the reading level where there is room for both, and drops below it where there is not. */
+  .picker{flex:1 1 240px;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;padding-bottom:1px}
+  .picker::-webkit-scrollbar{display:none}
+  /* Each one keeps its full width, or they shrink to fit the row and every label is cut to an
+     ellipsis instead of the row sliding. */
+  .picker>*{flex:none;max-width:none;overflow:visible}
   .pill{max-width:100%;overflow:hidden;text-overflow:ellipsis}
   .page{overflow:visible}
   main.desk{display:block}
